@@ -35,7 +35,8 @@ jobs:
       - name: 4. 安装编译与打包依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm make dotnet-runtime-6.0 imagemagick || sudo apt-get install -y clang lld llvm make imagemagick
+          sudo apt-get install -y --no-install-recommends clang lld llvm-21 make imagemagick
+          sudo ln -sf /usr/bin/llvm-ar-21 /usr/local/bin/llvm-ar
 
       - name: 5. 编译 eboot.bin 并打包为 ps4-timeSync.pkg
         env:
@@ -49,8 +50,8 @@ jobs:
           # 生成标准 512x512 应用图标 (icon0.png)
           convert -size 512x512 xc:#00439c -gravity center -pointsize 48 -fill white -annotate 0 "ps4-timeSync" pkg_out/sce_sys/icon0.png
 
-          # 使用 OpenOrbis 内置工具生成 param.sfo 与构建 PKG
-          PKGTOOL=$(find $OO_PS4_TOOLCHAIN -name "PkgTool.Core" -type f | head -n 1)
+          # 精准调用 Linux 版 PkgTool.Core 生成 param.sfo 与构建 PKG
+          PKGTOOL="$OO_PS4_TOOLCHAIN/bin/linux/PkgTool.Core"
           chmod +x "$PKGTOOL"
           "$PKGTOOL" sfo_new pkg_out/sce_sys/param.sfo
           "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo APP_TYPE --type Integer --maxsize 4 --value 1
@@ -70,6 +71,7 @@ jobs:
           "$PKGTOOL" gp4_file_add pkg_out/ps4-timeSync.gp4 sce_sys/param.sfo sce_sys/param.sfo
           "$PKGTOOL" gp4_file_add pkg_out/ps4-timeSync.gp4 sce_sys/icon0.png sce_sys/icon0.png
           "$PKGTOOL" pkg_build pkg_out/ps4-timeSync.gp4 .
+          ls -lh *.pkg
 
       - name: 6. 上传 ps4-timeSync.pkg 安装包
         uses: actions/upload-artifact@v4
