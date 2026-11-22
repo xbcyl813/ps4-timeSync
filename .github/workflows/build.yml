@@ -34,15 +34,15 @@ jobs:
           sudo apt-get install -y clang lld make
           make -C ${{ github.workspace }}/goldhen_sdk OO_PS4_TOOLCHAIN=${{ github.workspace }}/oo_toolchain
 
-      - name: 5. 编译生成 ntp_sync.prx 插件
+      - name: 5. 编译生成 ps4-timeSync.prx 插件
         env:
           OO_PS4_TOOLCHAIN: ${{ github.workspace }}/oo_toolchain
           GOLDHEN_PLUGINS_SDK: ${{ github.workspace }}/goldhen_sdk
         run: |
           make
 
-      - name: 6. 上传 ntp_sync.prx 产物
+      - name: 6. 上传 ps4-timeSync.prx 产物
         uses: actions/upload-artifact@v4
         with:
-          name: ntp_sync-goldhen-plugin
-          path: ntp_sync.prx
+          name: ps4-timeSync-goldhen-plugin
+          path: ps4-timeSync.prx
