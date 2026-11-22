@@ -1,9 +1,9 @@
-name: Build PS4 NTP Sync Payload
+name: Build GoldHEN NTP Sync Plugin
 
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch: # 允许在网页端手动点击运行编译
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,21 +13,30 @@ jobs:
       - name: 1. 检出当前仓库代码
         uses: actions/checkout@v4
 
-      - name: 2. 拉取并编译 Scene-Collective PS4-Payload-SDK
+      - name: 2. 安装 Clang 与 LLD 工具链
         run: |
-          git clone https://github.com /tmp/ps4-payload-sdk
-          make -C /tmp/ps4-payload-sdk/libPS4
+          sudo apt-get update
+          sudo apt-get install -y clang lld make git wget unzip
 
-      - name: 3. 编译 PS4 ELF 与 BIN 载荷
+      - name: 3. 配置 OpenOrbis Toolchain 与 GoldHEN Plugins SDK
+        run: |
+          wget -q https://github.com -O /tmp/oo.zip
+          mkdir -p /tmp/OpenOrbis
+          unzip -q /tmp/oo.zip -d /tmp/OpenOrbis
+          chmod +x /tmp/OpenOrbis/bin/linux/*
+
+          git clone https://github.com /tmp/GoldHEN_Plugins_SDK
+          make -C /tmp/GoldHEN_Plugins_SDK OO_PS4_TOOLCHAIN=/tmp/OpenOrbis
+
+      - name: 4. 编译生成 ntp_sync.prx 插件
         env:
-          PS4SDK: /tmp/ps4-payload-sdk
+          OO_PS4_TOOLCHAIN: /tmp/OpenOrbis
+          GOLDHEN_PLUGINS_SDK: /tmp/GoldHEN_Plugins_SDK
         run: |
           make
 
-      - name: 4. 上传编译产物 (ntp_sync.elf & ntp_sync.bin)
+      - name: 5. 上传 ntp_sync.prx 产物
         uses: actions/upload-artifact@v4
         with:
-          name: ps4-ntp-sync-payload
-          path: |
-            ntp_sync.elf
-            ntp_sync.bin
+          name: ntp_sync-goldhen-plugin
+          path: ntp_sync.prx
