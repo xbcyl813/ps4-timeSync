@@ -15,7 +15,7 @@ OBJS   := $(patsubst %.c, $(BUILDDIR)/%.o, $(notdir $(CFILES)))
 VPATH  := $(SOURCEDIR):$(PROJDIR)
 
 CFLAGS  := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -I$(TOOLCHAIN)/include -I$(TOOLCHAIN)/include/c++/v1 -I$(GOLDHEN_SDK)/include -O2 -Wall
-LDFLAGS := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -L$(GOLDHEN_SDK) -lGoldHEN_Hook -lc -lkernel -lSceNet -lSceSysmodule
+LDFLAGS := -m elf_x86_64 -shared --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -L$(GOLDHEN_SDK) -lGoldHEN_Hook -lc -lkernel -lSceNet -lSceSysmodule
 
 all: $(TARGET)
 
@@ -24,6 +24,7 @@ $(TARGET): $(BUILDDIR) $(OBJS)
 	$(LD) $(GOLDHEN_SDK)/build/crtprx.o $(OBJS) -o $(BUILDDIR)/temp.elf $(LDFLAGS)
 	$(CREATE_FSELF) -in=$(BUILDDIR)/temp.elf -out=$(TARGET) --lib=$(TARGET) --paid 0x3800000000000011
 	@if [ ! -s "$(TARGET)" ]; then echo "Error: $(TARGET) is 0 bytes!"; exit 1; fi
+	@ls -lh $(TARGET)
 
 $(BUILDDIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
