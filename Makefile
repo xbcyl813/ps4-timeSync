@@ -4,7 +4,7 @@ GOLDHEN_SDK := $(GOLDHEN_PLUGINS_SDK)
 PROJDIR   := $(shell pwd)
 SOURCEDIR := $(PROJDIR)/source
 BUILDDIR  := $(PROJDIR)/build
-TARGET    := ntp_sync.prx
+TARGET    := ps4-timeSync.prx
 
 CC      := clang
 LD      := ld.lld
