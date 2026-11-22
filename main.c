@@ -10,7 +10,7 @@
 #include <GoldHEN.h>
 
 // 插件元信息声明
-attr_public const char *g_pluginName = "ntp_sync";
+attr_public const char *g_pluginName = "ps4-timeSync";
 attr_public const char *g_pluginDesc = "Auto sync PS4 system clock via NTP";
 attr_public const char *g_pluginAuth = "Homebrew";
 attr_public uint32_t g_pluginVersion = 0x00000100; // v1.00
