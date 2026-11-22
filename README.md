@@ -1,4 +1,4 @@
-# PS4 NTP Clock Sync Plugin for GoldHEN (`ntp_sync.prx`)
+# PS4 NTP Clock Sync Plugin for GoldHEN (`ps4-timeSync.prx`)
 
 **English** | [简体中文](README_zh.md)
 
@@ -18,8 +18,8 @@ A lightweight background plugin (`.prx`) for **GoldHEN** on jailbroken **PS4 / P
 * **Dual-Server Failover:** Queries primary NTP (`203.107.6.88`) with automatic failover to secondary NTP (`119.29.26.206`) and a 3-second timeout guard.
 
 ### 🚀 Installation & Usage
-1. Download `ntp_sync.prx` from the **Actions (Artifacts)** or **Releases** tab.
-2. Transfer `ntp_sync.prx` via FTP (`port 2121`) or PS4-Xplorer into `/data/GoldHEN/plugins/ntp_sync.prx`.
+1. Download `ps4-timeSync.prx` from the **Actions (Artifacts)** or **Releases** tab.
+2. Transfer `ps4-timeSync.prx` via FTP (`port 2121`) or PS4-Xplorer into `/data/GoldHEN/plugins/ps4-timeSync.prx`.
 3. Add the plugin path under the `[default]` section in `/data/GoldHEN/plugins.ini`.
 4. Go to **GoldHEN Settings -> Plugins** on your PS4 and enable **`Enable Plugins Loader`**.
 5. Reboot or activate GoldHEN with an active internet connection to trigger automatic time synchronization.
