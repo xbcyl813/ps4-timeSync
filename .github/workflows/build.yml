@@ -47,10 +47,10 @@ jobs:
           mkdir -p pkg_out/sce_sys
           cp eboot.bin pkg_out/eboot.bin
 
-          # 生成标准 512x512 应用图标 (icon0.png)
-          convert -size 512x512 xc:#00439c -gravity center -pointsize 48 -fill white -annotate 0 "ps4-timeSync" pkg_out/sce_sys/icon0.png
+          # 生成标准 512x512 24位色应用图标 (icon0.png)，无需依赖系统字体
+          convert -size 512x512 radial-gradient:#0072ce-#002b6b PNG24:pkg_out/sce_sys/icon0.png
 
-          # 精准调用 Linux 版 PkgTool.Core 生成 param.sfo 与构建 PKG
+          # 调用 Linux 版 PkgTool.Core 生成 param.sfo 与构建 PKG
           PKGTOOL="$OO_PS4_TOOLCHAIN/bin/linux/PkgTool.Core"
           chmod +x "$PKGTOOL"
           "$PKGTOOL" sfo_new pkg_out/sce_sys/param.sfo
