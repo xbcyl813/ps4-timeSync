@@ -37,7 +37,7 @@ jobs:
       - name: 4. 安装编译依赖并构建 GoldHEN SDK
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld make
+          sudo apt-get install -y clang lld llvm make
           make -C ${{ github.workspace }}/goldhen_sdk OO_PS4_TOOLCHAIN=$OO_PS4_TOOLCHAIN
 
       - name: 5. 编译生成 ps4-timeSync.prx 插件
