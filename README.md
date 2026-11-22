@@ -2,6 +2,8 @@
 
 **English** | [简体中文](README_zh.md)
 
+> **Looking for the automatic background GoldHEN plugin (`.prx`)?** Please switch to the **`main`** branch.
+
 ---
 
 ### 📖 Overview
@@ -22,3 +24,10 @@
 2. Copy the `.pkg` file to an **exFAT / FAT32** USB drive root and install via **GoldHEN -> Package Installer**.
 3. Ensure the console has internet and correct local time zone settings.
 4. Launch the app from the home screen; it will auto-exit once synchronized.
+
+### ⚠️ Important Notes / FAQ
+* **Time Zone Setting:** The application writes standard **UTC time** to the kernel clock. Please make sure your local time zone (e.g., `UTC+08:00`) is properly configured under **PS4 Settings -> Date and Time -> Time Zone**.
+* **Router Firewall:** If you use router plugins to block Sony servers, ensure **UDP port 123** is allowed for `203.107.6.88` and `119.29.26.206`.
+
+### 🛠️ License
+Released under the MIT License.
