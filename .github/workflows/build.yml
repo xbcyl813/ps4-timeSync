@@ -13,23 +13,25 @@ jobs:
       - name: 1. 检出当前仓库代码
         uses: actions/checkout@v4
 
-      - name: 2. 拉取 OpenOrbis Toolchain
-        uses: actions/checkout@v4
-        with:
-          repository: OpenOrbis/OpenOrbis-PS4-Toolchain
-          path: oo_toolchain
-
-      - name: 3. 拉取 GoldHEN Plugins SDK
+      - name: 2. 拉取 GoldHEN Plugins SDK
         uses: actions/checkout@v4
         with:
           repository: GoldHEN/GoldHEN_Plugins_SDK
           path: goldhen_sdk
 
-      - name: 4. 安装 Clang 与 LLD 工具链并编译 SDK
+      - name: 3. 下载官方完整版 OpenOrbis Toolchain Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ${{ github.workspace }}/oo_toolchain
+          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*.zip" -D /tmp
+          unzip -q /tmp/*.zip -d ${{ github.workspace }}/oo_toolchain
+          chmod +x ${{ github.workspace }}/oo_toolchain/bin/linux/*
+
+      - name: 4. 安装编译依赖并构建 GoldHEN SDK
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld make
-          chmod +x ${{ github.workspace }}/oo_toolchain/bin/linux/*
           make -C ${{ github.workspace }}/goldhen_sdk OO_PS4_TOOLCHAIN=${{ github.workspace }}/oo_toolchain
 
       - name: 5. 编译生成 ntp_sync.prx 插件
