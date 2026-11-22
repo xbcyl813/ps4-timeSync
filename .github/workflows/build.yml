@@ -1,4 +1,4 @@
-name: Build GoldHEN NTP Sync Plugin
+name: Build ps4-timeSync Plugin
 
 on:
   push:
@@ -23,9 +23,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p ${{ github.workspace }}/oo_toolchain
-          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*.zip" -D /tmp
-          unzip -q /tmp/*.zip -d ${{ github.workspace }}/oo_toolchain
+          mkdir -p ${{ github.workspace }}/oo_toolchain /tmp/oo_dl
+          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -D /tmp/oo_dl
+          ls -la /tmp/oo_dl
+          if ls /tmp/oo_dl/*.tar.gz 1> /dev/null 2>&1; then
+            tar -xzf /tmp/oo_dl/*.tar.gz -C ${{ github.workspace }}/oo_toolchain
+          elif ls /tmp/oo_dl/*.zip 1> /dev/null 2>&1; then
+            unzip -q /tmp/oo_dl/*.zip -d ${{ github.workspace }}/oo_toolchain
+          fi
           chmod +x ${{ github.workspace }}/oo_toolchain/bin/linux/*
 
       - name: 4. 安装编译依赖并构建 GoldHEN SDK
@@ -44,5 +49,5 @@ jobs:
       - name: 6. 上传 ps4-timeSync.prx 产物
         uses: actions/upload-artifact@v4
         with:
-          name: ps4-timeSync-goldhen-plugin
+          name: ps4-timeSync-plugin
           path: ps4-timeSync.prx
