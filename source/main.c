@@ -8,7 +8,11 @@
 #include <orbis/Net.h>
 #include <orbis/Sysmodule.h>
 #include <orbis/SystemService.h>
+
+// 隔离 ps4-libjbc/defs.h 中的 pid_t 与 OpenOrbis 标准库的冲突
+#define pid_t jbc_pid_t
 #include "jailbreak.h"
+#undef pid_t
 
 #define NTP_SERVER_PRIMARY   "203.107.6.88"    // 阿里云 NTP
 #define NTP_SERVER_SECONDARY "119.29.26.206"   // 腾讯云 NTP
