@@ -32,13 +32,18 @@ jobs:
           echo "OO_PS4_TOOLCHAIN=$REAL_OO_DIR" >> $GITHUB_ENV
           chmod +x $(dirname "$CREATE_FSELF_PATH")/*
 
-      - name: 4. 安装编译与打包依赖（含 libssl1.1 兼容库）
+      - name: 4. 安装编译与打包依赖（安装真实 libssl1.1 库）
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang lld llvm-21 make imagemagick
+          sudo apt-get install -y --no-install-recommends clang lld llvm-21 make imagemagick wget
           sudo ln -sf /usr/bin/llvm-ar-21 /usr/local/bin/llvm-ar
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.1.1
-          sudo ln -sf /usr/lib/x86_64-linux-gnu/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.1.1
+
+          # 通过变量拼接地址，避免网页复制截断，自动匹配 Ubuntu 官方源中的 libssl1.1
+          BASE_URL="http""://archive.ubuntu.com/ubuntu/pool/main/o/openssl"
+          DEB_FILE=$(wget -qO- "$BASE_URL/" | grep -oE 'libssl1\.1_1\.1\.1[^"]*_amd64\.deb' | head -n 1)
+          echo "Downloading $DEB_FILE ..."
+          wget -q "$BASE_URL/$DEB_FILE" -O /tmp/libssl1.1.deb
+          sudo dpkg -i /tmp/libssl1.1.deb
 
       - name: 5. 编译 eboot.bin 并打包为 ps4-timeSync.pkg
         env:
