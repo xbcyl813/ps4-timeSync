@@ -1,4 +1,4 @@
-# PS4 网络时间自动同步插件 (`ntp_sync.prx` for GoldHEN)
+# PS4 网络时间自动同步插件 (`ps4-timeSync.prx` for GoldHEN)
 
 [English](README.md) | **简体中文**
 
@@ -18,8 +18,8 @@
 * **双节点自动容灾：** 优先请求阿里云 NTP（`203.107.6.88`），失败时自动切换至腾讯云 NTP（`119.29.26.206`），内置 3 秒超时保护。
 
 ### 🚀 安装与使用方法
-1. 从本仓库的 **Actions (Artifacts)** 或 **Releases** 页面下载 **`ntp_sync.prx`**。
-2. 通过 FTP（`2121` 端口）或 PS4-Xplorer 放入路径：`/data/GoldHEN/plugins/ntp_sync.prx`。
-3. 在 `/data/GoldHEN/plugins.ini` 的 `[default]` 节点下添加：`/data/GoldHEN/plugins/ntp_sync.prx`。
+1. 从本仓库的 **Actions (Artifacts)** 或 **Releases** 页面下载 **`ps4-timeSync.prx`**。
+2. 通过 FTP（`2121` 端口）或 PS4-Xplorer 放入路径：`/data/GoldHEN/plugins/ps4-timeSync.prx`。
+3. 在 `/data/GoldHEN/plugins.ini` 的 `[default]` 节点下添加：`/data/GoldHEN/plugins/ps4-timeSync.prx`。
 4. 在 PS4 的 **GoldHEN 设置 -> Plugins** 菜单中，勾选开启 **`Enable Plugins Loader`**。
 5. 联网激活 GoldHEN 后，屏幕左上角将弹出时间同步成功提示（请确保已在系统设置中设好本地时区）。
