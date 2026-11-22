@@ -9,11 +9,11 @@
 #include <orbis/Sysmodule.h>
 #include <GoldHEN.h>
 
-// 插件元信息声明
-attr_public const char *g_pluginName = "ps4-timeSync";
-attr_public const char *g_pluginDesc = "Auto sync PS4 system clock via NTP";
-attr_public const char *g_pluginAuth = "Homebrew";
-attr_public uint32_t g_pluginVersion = 0x00000100; // v1.00
+// 插件元信息声明（使用标准 GCC/Clang 属性宏，兼容所有版本 SDK）
+__attribute__((visibility("default"))) const char *g_pluginName = "ps4-timeSync";
+__attribute__((visibility("default"))) const char *g_pluginDesc = "Auto sync PS4 system clock via NTP";
+__attribute__((visibility("default"))) const char *g_pluginAuth = "Homebrew";
+__attribute__((visibility("default"))) uint32_t g_pluginVersion = 0x00000100; // v1.00
 
 // 公共 NTP 服务器 IP（绕过 DNS 屏蔽）
 #define NTP_SERVER_PRIMARY   "203.107.6.88"    // 阿里云 NTP
@@ -21,7 +21,6 @@ attr_public uint32_t g_pluginVersion = 0x00000100; // v1.00
 #define NTP_PORT 123
 #define NTP_TIMESTAMP_DELTA 2208988800ULL
 
-// 声明原生系统时间设置接口
 struct ps4_timeval {
     int64_t tv_sec;
     int64_t tv_usec;
@@ -32,37 +31,48 @@ struct ps4_timezone {
     int tz_dsttime;
 };
 
-int sceKernelSettimeofday(const struct ps4_timeval *tv, const struct ps4_timezone *tz);
+// PS4 系统原生左上角弹窗通知
+static void show_notification(const char *msg) {
+    OrbisNotificationRequest req;
+    memset(&req, 0, sizeof(req));
+    req.type = 0;
+    req.unk3 = 0;
+    req.useIconImageUri = 0;
+    req.targetId = -1;
+    strncpy(req.message, msg, sizeof(req.message) - 1);
+    sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
+}
 
 // 查询单个 NTP 服务器
 static uint64_t query_ntp_server(const char *server_ip) {
-    OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_DGRAM, ORBIS_NET_IPPROTO_UDP);
+    // AF_INET = 2, SOCK_DGRAM = 2, IPPROTO_UDP = 17
+    OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", 2, 2, 17);
     if (sockfd < 0) {
         return 0;
     }
 
-    // 设置 3 秒接收超时
+    // SOL_SOCKET = 0xffff, SO_RCVTIMEO = 0x1006, 3 秒超时
     int timeout = 3000000;
-    sceNetSetsockopt(sockfd, ORBIS_NET_SOL_SOCKET, ORBIS_NET_SO_RCVTIMEO, &timeout, sizeof(timeout));
+    sceNetSetsockopt(sockfd, 0xffff, 0x1006, &timeout, sizeof(timeout));
 
-    OrbisNetSockaddrIn server_addr;
+    struct OrbisNetSockaddrIn server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_len = sizeof(server_addr);
-    server_addr.sin_family = ORBIS_NET_AF_INET;
+    server_addr.sin_family = 2; // AF_INET
     server_addr.sin_port = sceNetHtons(NTP_PORT);
-    sceNetInetPton(ORBIS_NET_AF_INET, server_ip, &server_addr.sin_addr);
+    sceNetInetPton(2, server_ip, &server_addr.sin_addr);
 
     uint8_t packet[48] = {0};
     packet[0] = 0x1B; // LI=0, VN=3, Mode=3 (Client)
 
-    if (sceNetSendto(sockfd, packet, sizeof(packet), 0, (OrbisNetSockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    if (sceNetSendto(sockfd, packet, sizeof(packet), 0, (struct OrbisNetSockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         sceNetSocketClose(sockfd);
         return 0;
     }
 
-    OrbisNetSockaddrIn from_addr;
+    struct OrbisNetSockaddrIn from_addr;
     OrbisNetSocklen_t from_len = sizeof(from_addr);
-    int recv_len = sceNetRecvfrom(sockfd, packet, sizeof(packet), 0, (OrbisNetSockaddr *)&from_addr, &from_len);
+    int recv_len = sceNetRecvfrom(sockfd, packet, sizeof(packet), 0, (struct OrbisNetSockaddr *)&from_addr, &from_len);
     sceNetSocketClose(sockfd);
 
     if (recv_len < 48) {
@@ -99,11 +109,16 @@ static void *ntp_sync_thread(void *arg) {
         tv.tv_sec = (int64_t)unix_time;
         tv.tv_usec = 0;
 
-        int ret = sceKernelSettimeofday(&tv, NULL);
+        // 通过函数指针强转调用 libkernel 导出的 sceKernelSettimeofday，避免头文件原型冲突
+        typedef int (*settimeofday_fn)(const struct ps4_timeval *, const struct ps4_timezone *);
+        int ret = ((settimeofday_fn)sceKernelSettimeofday)(&tv, NULL);
+
         if (ret == 0) {
-            Notify(TEX_ICON_SYSTEM, "NTP 时间自动同步成功！");
+            show_notification("ps4-timeSync: NTP 时间自动同步成功！");
         } else {
-            Notify(TEX_ICON_SYSTEM, "NTP 时间写入失败 (错误码: %d)", ret);
+            char err_msg[64];
+            snprintf(err_msg, sizeof(err_msg), "ps4-timeSync: 时间写入失败 (错误码: %d)", ret);
+            show_notification(err_msg);
         }
     }
 
@@ -111,7 +126,7 @@ static void *ntp_sync_thread(void *arg) {
 }
 
 // GoldHEN 插件入口函数
-int attr_module_hidden module_start(size_t argc, const void *args) {
+__attribute__((visibility("hidden"))) int module_start(size_t argc, const void *args) {
     pthread_t thread;
     pthread_create(&thread, NULL, ntp_sync_thread, NULL);
     pthread_detach(thread);
@@ -119,6 +134,6 @@ int attr_module_hidden module_start(size_t argc, const void *args) {
 }
 
 // GoldHEN 插件卸载函数
-int attr_module_hidden module_stop(size_t argc, const void *args) {
+__attribute__((visibility("hidden"))) int module_stop(size_t argc, const void *args) {
     return 0;
 }
