@@ -1,28 +1,30 @@
 TOOLCHAIN := $(OO_PS4_TOOLCHAIN)
-GOLDHEN_SDK := $(GOLDHEN_PLUGINS_SDK)
+JBC_DIR   := $(LIBJBC_DIR)
 
 PROJDIR   := $(shell pwd)
 SOURCEDIR := $(PROJDIR)/source
 BUILDDIR  := $(PROJDIR)/build
-TARGET    := ps4-timeSync.prx
+TARGET    := eboot.bin
 
-CC      := clang
-LD      := ld.lld
+CC           := clang
+LD           := ld.lld
 CREATE_FSELF := $(TOOLCHAIN)/bin/linux/create-fself
 
-CFILES  := $(wildcard $(SOURCEDIR)/*.c)
-OBJS    := $(patsubst $(SOURCEDIR)/%.c, $(BUILDDIR)/%.o, $(CFILES))
+CFILES := $(wildcard $(SOURCEDIR)/*.c) $(wildcard $(JBC_DIR)/*.c)
+OBJS   := $(patsubst %.c, $(BUILDDIR)/%.o, $(notdir $(CFILES)))
 
-CFLAGS  := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -I$(TOOLCHAIN)/include -I$(TOOLCHAIN)/include/c++/v1 -I$(GOLDHEN_SDK)/include -O2 -Wall
-LDFLAGS := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -L$(GOLDHEN_SDK) -lGoldHEN_Hook -lc -lkernel -lSceNet -lSceSysmodule
+VPATH  := $(SOURCEDIR):$(JBC_DIR)
+
+CFLAGS  := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -I$(TOOLCHAIN)/include -I$(JBC_DIR) -O2 -Wall
+LDFLAGS := -m elf_x86_64 -pie --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -lc -lkernel -lSceNet -lSceSysmodule -lSceSystemService
 
 all: $(TARGET)
 
 $(TARGET): $(BUILDDIR) $(OBJS)
-	$(LD) $(TOOLCHAIN)/lib/crtlib.o $(OBJS) -o $(BUILDDIR)/temp.elf $(LDFLAGS)
-	$(CREATE_FSELF) -in=$(BUILDDIR)/temp.elf -out=$(TARGET) --lib=$(TARGET) --paid 0x3800000000000011
+	$(LD) $(TOOLCHAIN)/lib/crt1.o $(OBJS) -o $(BUILDDIR)/temp.elf $(LDFLAGS)
+	$(CREATE_FSELF) -in=$(BUILDDIR)/temp.elf -out=$(TARGET) --paid 0x3800000000000011
 
-$(BUILDDIR)/%.o: $(SOURCEDIR)/%.c
+$(BUILDDIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILDDIR):
