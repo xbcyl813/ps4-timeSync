@@ -51,7 +51,7 @@ jobs:
           # 生成标准 512x512 24位色应用图标 (icon0.png)
           convert -size 512x512 radial-gradient:#0072ce-#002b6b PNG24:pkg_out/sce_sys/icon0.png
 
-          # 调用 Linux 版 PkgTool.Core 生成 param.sfo 与构建 PKG
+          # 生成标准 param.sfo
           PKGTOOL="$OO_PS4_TOOLCHAIN/bin/linux/PkgTool.Core"
           chmod +x "$PKGTOOL"
           "$PKGTOOL" sfo_new pkg_out/sce_sys/param.sfo
@@ -66,11 +66,36 @@ jobs:
           "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo TITLE_ID --type Utf8 --maxsize 12 --value "SYNC00001"
           "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo VERSION --type Utf8 --maxsize 8 --value "01.00"
 
-          # 生成 gp4 项目清单并打包出最终的 ps4-timeSync.pkg
-          "$PKGTOOL" gp4_proj_create --volume_type pkg_ps4_app --content_id IV0000-SYNC00001_00-PS4TIMESYNC00001 --passcode 00000000000000000000000000000000 pkg_out/ps4-timeSync.gp4
-          "$PKGTOOL" gp4_file_add pkg_out/ps4-timeSync.gp4 eboot.bin eboot.bin
-          "$PKGTOOL" gp4_file_add pkg_out/ps4-timeSync.gp4 sce_sys/param.sfo sce_sys/param.sfo
-          "$PKGTOOL" gp4_file_add pkg_out/ps4-timeSync.gp4 sce_sys/icon0.png sce_sys/icon0.png
+          # 直接生成标准 GP4 项目清单 XML
+          cat << 'EOF' > pkg_out/ps4-timeSync.gp4
+          <?xml version="1.0" encoding="utf-8" standalone="yes"?>
+          <psproject fmt="gp4" version="1000">
+            <volume>
+              <volume_type>pkg_ps4_app</volume_type>
+              <volume_id>PS4VOLUME</volume_id>
+              <volume_ts>2026-01-01 00:00:00</volume_ts>
+              <package content_id="IV0000-SYNC00001_00-PS4TIMESYNC00001" passcode="00000000000000000000000000000000" storage_type="digital50" app_type="full"/>
+              <chunk_info chunk_count="1" scenario_count="1">
+                <chunks>
+                  <chunk id="0" layer_no="0" label="Chunk #0"/>
+                </chunks>
+                <scenarios default_id="0">
+                  <scenario id="0" type="sp" initial_chunk_count="1" label="Scenario #0">0</scenario>
+                </scenarios>
+              </chunk_info>
+            </volume>
+            <files img_no="0">
+              <file targ_path="sce_sys/param.sfo" orig_path="sce_sys/param.sfo"/>
+              <file targ_path="sce_sys/icon0.png" orig_path="sce_sys/icon0.png"/>
+              <file targ_path="eboot.bin" orig_path="eboot.bin"/>
+            </files>
+            <rootdir>
+              <dir targ_name="sce_sys"/>
+            </rootdir>
+          </psproject>
+          EOF
+
+          # 打包出最终的 .pkg 文件
           "$PKGTOOL" pkg_build pkg_out/ps4-timeSync.gp4 .
           ls -lh *.pkg
 
