@@ -1,32 +1,25 @@
-# PS4 网络时间自动同步载荷 (NTP Clock Sync Payload)
+# PS4 网络时间自动同步插件 (`ntp_sync.prx` for GoldHEN)
 
 [English](README.md) | **简体中文**
 
 ---
 
 ### 📖 项目简介
-这是一个专为越狱环境下的 **PS4 / PS4 Pro** 编写的轻量级自制载荷（Payload，`.elf` / `.bin`）。它能够通过 UDP 协议自动向公共 NTP 时间服务器请求标准的 UTC 互联网时间，并将其直接写入 PS4 的系统底层内核时钟。
+专为越狱环境下的 **PS4 / PS4 Pro** 设计的 **GoldHEN 原生后台插件（`.prx`）**。每次开机激活 GoldHEN 并连接网络时，插件会在后台自动向公共 NTP 服务器请求标准 UTC 时间并同步至 PS4 系统底层内核时钟。
 
 **核心用途：**
-* **替代失效的主板 CMOS 电池（CR2032）：** 无需繁琐地拆解主板更换纽扣电池，即可快速校准断电归零的系统时间。
-* **修复奖杯时间戳异常：** 解决离线破解主机因内核时间归零导致的奖杯获取时间显示错误问题。
-* **兼容屏蔽更新的 DNS 环境：** 代码内部直接通过公共 NTP 服务器 IP 通信（内置阿里云与腾讯云双节点自动故障转移），完美绕过破解主机常用的域名屏蔽 DNS，无需连接 PSN 官方服务器。
+* **免拆机替代失效的主板 CMOS 电池（CR2032）：** 无需拆机换电池或电脑手动注入 Payload，开机联网即自动校准时间。
+* **修复奖杯时间戳异常：** 解决离线游玩导致的奖杯时间显示为 `1970` 年的问题。
+* **兼容屏蔽更新的 DNS 环境：** 直连公共 NTP 服务器 IP（内置双节点容灾），不连接索尼 PSN 官方服务器。
 
 ### ✨ 功能特性
-* **全固件兼容：** 采用系统原生 `sceKernelSettimeofday` 接口并结合智能提权回退机制，安全兼容 `5.05`、`6.72`、`7.xx`、`9.00`、`11.00` 等主流破解固件，无硬编码内核偏移崩溃风险。
-* **双节点容灾：** 优先请求阿里云 NTP（`203.107.6.88`），超时或失败时自动切换至腾讯云 NTP（`119.29.26.206`），内置 3 秒超时保护防止卡死。
-* **云端自动编译：** 集成 GitHub Actions 工作流，提交代码即可自动构建最新的 `.elf` 与 `.bin` 文件。
+* **全自动后台静默运行：** 基于 `pthread` 独立后台线程，不阻塞 PS4 主界面或游戏启动。
+* **全固件通用兼容：** 调用系统原生 `sceKernelSettimeofday` 接口，支持 `5.05`、`6.72`、`7.xx`、`9.00`、`11.00` 等主流固件。
+* **双节点自动容灾：** 优先请求阿里云 NTP（`203.107.6.88`），失败时自动切换至腾讯云 NTP（`119.29.26.206`），内置 3 秒超时保护。
 
-### 🚀 使用方法
-1. 确保 PS4 / PS4 Pro 已连接至可访问互联网的局域网，并开启破解（如 **GoldHEN**）。
-2. 在主机端开启 **BinLoader Server**（GoldHEN 设置 -> Server Settings -> 勾选 `BinLoader Server`，默认端口 `9090`）。
-3. 从本仓库的 **Actions (Artifacts)** 或 **Releases** 页面下载编译好的 `ntp_sync.bin` 或 `ntp_sync.elf`。
-4. 使用注入工具（如 NetCat GUI、PS4 Payload Sender 或终端命令）将文件发送至主机的 `9090` 端口：
-   ```bash
-   nc -w 3 <你的PS4局域网IP> 9090 < ntp_sync.bin
-   ```
-5. 等待屏幕左上角弹出 **`PS4 时间同步成功！`** 通知即可（注：系统设置中请将时区设为正确的本地时区，如 `UTC+08:00`）。
-
-### 🛠️ 致谢与开源协议
-* 基于 [Scene-Collective/ps4-payload-sdk](https://github.com) 开发。
-* 采用 MIT 开源协议发布。
+### 🚀 安装与使用方法
+1. 从本仓库的 **Actions (Artifacts)** 或 **Releases** 页面下载 **`ntp_sync.prx`**。
+2. 通过 FTP（`2121` 端口）或 PS4-Xplorer 放入路径：`/data/GoldHEN/plugins/ntp_sync.prx`。
+3. 在 `/data/GoldHEN/plugins.ini` 的 `[default]` 节点下添加：`/data/GoldHEN/plugins/ntp_sync.prx`。
+4. 在 PS4 的 **GoldHEN 设置 -> Plugins** 菜单中，勾选开启 **`Enable Plugins Loader`**。
+5. 联网激活 GoldHEN 后，屏幕左上角将弹出时间同步成功提示（请确保已在系统设置中设好本地时区）。
