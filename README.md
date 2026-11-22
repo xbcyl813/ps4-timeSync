@@ -2,6 +2,8 @@
 
 **English** | [简体中文](README_zh.md)
 
+> **Looking for the standalone `.pkg` app version?** Please switch to the **`pkg`** branch.
+
 ---
 
 ### 📖 Overview
@@ -23,3 +25,10 @@ A lightweight background plugin (`.prx`) for **GoldHEN** on jailbroken **PS4 / P
 3. Add the plugin path under the `[default]` section in `/data/GoldHEN/plugins.ini`.
 4. Go to **GoldHEN Settings -> Plugins** on your PS4 and enable **`Enable Plugins Loader`**.
 5. Reboot or activate GoldHEN with an active internet connection to trigger automatic time synchronization.
+
+### ⚠️ Important Notes / FAQ
+* **Time Zone Setting:** The plugin writes standard **UTC time** to the kernel clock. Please make sure your local time zone (e.g., `UTC+08:00`) is properly configured under **PS4 Settings -> Date and Time -> Time Zone**.
+* **Router Firewall:** If you use router plugins to block Sony servers, ensure **UDP port 123** is allowed for `203.107.6.88` and `119.29.26.206`.
+
+### 🛠️ License
+Released under the MIT License.
