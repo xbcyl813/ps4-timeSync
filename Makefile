@@ -22,7 +22,8 @@ all: $(TARGET)
 $(TARGET): $(BUILDDIR) $(OBJS)
 	@if [ -z "$(OBJS)" ]; then echo "Error: No .c source files found!"; exit 1; fi
 	$(LD) $(GOLDHEN_SDK)/build/crtprx.o $(OBJS) -o $(BUILDDIR)/temp.elf $(LDFLAGS)
-	$(CREATE_FSELF) -in=$(BUILDDIR)/temp.elf -out=$(TARGET) --lib=$(TARGET) --paid 0x3800000000000011
+	@ls -lh $(BUILDDIR)/temp.elf
+	$(CREATE_FSELF) -in=$(BUILDDIR)/temp.elf -out=$(TARGET) --paid 0x3800000000000011
 	@if [ ! -s "$(TARGET)" ]; then echo "Error: $(TARGET) is 0 bytes!"; exit 1; fi
 	@ls -lh $(TARGET)
 
