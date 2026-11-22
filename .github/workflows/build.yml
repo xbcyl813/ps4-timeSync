@@ -1,23 +1,23 @@
-name: Build ps4-timeSync Plugin
+name: Build ps4-timeSync PKG
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ pkg ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-pkg:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. 检出当前仓库代码
+      - name: 1. 检出当前 pkg 分支代码
         uses: actions/checkout@v4
 
-      - name: 2. 拉取 GoldHEN Plugins SDK
+      - name: 2. 拉取全固件越狱库 ps4-libjbc
         uses: actions/checkout@v4
         with:
-          repository: GoldHEN/GoldHEN_Plugins_SDK
-          path: goldhen_sdk
+          repository: sleirsgoevy/ps4-libjbc
+          path: libjbc
 
       - name: 3. 下载官方完整版 OpenOrbis Toolchain Release
         env:
@@ -27,27 +27,52 @@ jobs:
           gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*linux*" -D /tmp/oo_dl || gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*" -D /tmp/oo_dl
           tar -xzf /tmp/oo_dl/*.tar.gz -C ${{ github.workspace }}/oo_toolchain
 
-          # 自动查找 create-fself 所在的真实工具链根目录
           CREATE_FSELF_PATH=$(find ${{ github.workspace }}/oo_toolchain -name "create-fself" -type f | head -n 1)
-          echo "Found create-fself at: $CREATE_FSELF_PATH"
           REAL_OO_DIR=$(dirname $(dirname $(dirname "$CREATE_FSELF_PATH")))
           echo "OO_PS4_TOOLCHAIN=$REAL_OO_DIR" >> $GITHUB_ENV
           chmod +x $(dirname "$CREATE_FSELF_PATH")/*
 
-      - name: 4. 安装编译依赖并构建 GoldHEN SDK
+      - name: 4. 安装编译与打包依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm make
-          make -C ${{ github.workspace }}/goldhen_sdk OO_PS4_TOOLCHAIN=$OO_PS4_TOOLCHAIN
+          sudo apt-get install -y clang lld llvm make dotnet-runtime-6.0 imagemagick || sudo apt-get install -y clang lld llvm make imagemagick
 
-      - name: 5. 编译生成 ps4-timeSync.prx 插件
+      - name: 5. 编译 eboot.bin 并打包为 ps4-timeSync.pkg
         env:
-          GOLDHEN_PLUGINS_SDK: ${{ github.workspace }}/goldhen_sdk
+          LIBJBC_DIR: ${{ github.workspace }}/libjbc
         run: |
           make
 
-      - name: 6. 上传 ps4-timeSync.prx 产物
+          mkdir -p pkg_out/sce_sys
+          cp eboot.bin pkg_out/eboot.bin
+
+          # 生成标准 512x512 应用图标 (icon0.png)
+          convert -size 512x512 xc:#00439c -gravity center -pointsize 48 -fill white -annotate 0 "ps4-timeSync" pkg_out/sce_sys/icon0.png
+
+          # 使用 OpenOrbis 内置工具生成 param.sfo 与构建 PKG
+          PKGTOOL=$(find $OO_PS4_TOOLCHAIN -name "PkgTool.Core" -type f | head -n 1)
+          chmod +x "$PKGTOOL"
+          "$PKGTOOL" sfo_new pkg_out/sce_sys/param.sfo
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo APP_TYPE --type Integer --maxsize 4 --value 1
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo APP_VER --type Utf8 --maxsize 8 --value "01.00"
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo ATTRIBUTE --type Integer --maxsize 4 --value 0
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo CATEGORY --type Utf8 --maxsize 4 --value "gd"
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo CONTENT_ID --type Utf8 --maxsize 48 --value "IV0000-SYNC00001_00-PS4TIMESYNC00001"
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo DOWNLOAD_DATA_SIZE --type Integer --maxsize 4 --value 0
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo SYSTEM_VER --type Integer --maxsize 4 --value 0
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo TITLE --type Utf8 --maxsize 128 --value "ps4-timeSync"
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo TITLE_ID --type Utf8 --maxsize 12 --value "SYNC00001"
+          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo VERSION --type Utf8 --maxsize 8 --value "01.00"
+
+          # 生成 gp4 项目清单并打包出最终的 ps4-timeSync.pkg
+          "$PKGTOOL" gp4_proj_create --volume_type pkg_ps4_app --content_id IV0000-SYNC00001_00-PS4TIMESYNC00001 --passcode 00000000000000000000000000000000 pkg_out/ps4-timeSync.gp4
+          "$PKGTOOL" gp4_file_add pkg_out/ps4-timeSync.gp4 eboot.bin eboot.bin
+          "$PKGTOOL" gp4_file_add pkg_out/ps4-timeSync.gp4 sce_sys/param.sfo sce_sys/param.sfo
+          "$PKGTOOL" gp4_file_add pkg_out/ps4-timeSync.gp4 sce_sys/icon0.png sce_sys/icon0.png
+          "$PKGTOOL" pkg_build pkg_out/ps4-timeSync.gp4 .
+
+      - name: 6. 上传 ps4-timeSync.pkg 安装包
         uses: actions/upload-artifact@v4
         with:
-          name: ps4-timeSync-plugin
-          path: ps4-timeSync.prx
+          name: ps4-timeSync-pkg
+          path: "*.pkg"
