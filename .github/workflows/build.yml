@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p ${{ github.workspace }}/oo_toolchain /tmp/oo_dl
-          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -D /tmp/oo_dl
+          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*" -D /tmp/oo_dl
           ls -la /tmp/oo_dl
           if ls /tmp/oo_dl/*.tar.gz 1> /dev/null 2>&1; then
             tar -xzf /tmp/oo_dl/*.tar.gz -C ${{ github.workspace }}/oo_toolchain
