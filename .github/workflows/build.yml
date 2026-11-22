@@ -24,24 +24,24 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p ${{ github.workspace }}/oo_toolchain /tmp/oo_dl
-          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*" -D /tmp/oo_dl
-          ls -la /tmp/oo_dl
-          if ls /tmp/oo_dl/*.tar.gz 1> /dev/null 2>&1; then
-            tar -xzf /tmp/oo_dl/*.tar.gz -C ${{ github.workspace }}/oo_toolchain
-          elif ls /tmp/oo_dl/*.zip 1> /dev/null 2>&1; then
-            unzip -q /tmp/oo_dl/*.zip -d ${{ github.workspace }}/oo_toolchain
-          fi
-          chmod +x ${{ github.workspace }}/oo_toolchain/bin/linux/*
+          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*linux*" -D /tmp/oo_dl || gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*" -D /tmp/oo_dl
+          tar -xzf /tmp/oo_dl/*.tar.gz -C ${{ github.workspace }}/oo_toolchain
+
+          # 自动查找 create-fself 所在的真实工具链根目录
+          CREATE_FSELF_PATH=$(find ${{ github.workspace }}/oo_toolchain -name "create-fself" -type f | head -n 1)
+          echo "Found create-fself at: $CREATE_FSELF_PATH"
+          REAL_OO_DIR=$(dirname $(dirname $(dirname "$CREATE_FSELF_PATH")))
+          echo "OO_PS4_TOOLCHAIN=$REAL_OO_DIR" >> $GITHUB_ENV
+          chmod +x $(dirname "$CREATE_FSELF_PATH")/*
 
       - name: 4. 安装编译依赖并构建 GoldHEN SDK
         run: |
           sudo apt-get update
           sudo apt-get install -y clang lld make
-          make -C ${{ github.workspace }}/goldhen_sdk OO_PS4_TOOLCHAIN=${{ github.workspace }}/oo_toolchain
+          make -C ${{ github.workspace }}/goldhen_sdk OO_PS4_TOOLCHAIN=$OO_PS4_TOOLCHAIN
 
       - name: 5. 编译生成 ps4-timeSync.prx 插件
         env:
-          OO_PS4_TOOLCHAIN: ${{ github.workspace }}/oo_toolchain
           GOLDHEN_PLUGINS_SDK: ${{ github.workspace }}/goldhen_sdk
         run: |
           make
