@@ -32,11 +32,13 @@ jobs:
           echo "OO_PS4_TOOLCHAIN=$REAL_OO_DIR" >> $GITHUB_ENV
           chmod +x $(dirname "$CREATE_FSELF_PATH")/*
 
-      - name: 4. 安装编译与打包依赖
+      - name: 4. 安装编译与打包依赖（含 libssl1.1 兼容库）
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang lld llvm-21 make imagemagick
           sudo ln -sf /usr/bin/llvm-ar-21 /usr/local/bin/llvm-ar
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libssl.so.3 /usr/lib/x86_64-linux-gnu/libssl.so.1.1
+          sudo ln -sf /usr/lib/x86_64-linux-gnu/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/libcrypto.so.1.1
 
       - name: 5. 编译 eboot.bin 并打包为 ps4-timeSync.pkg
         env:
