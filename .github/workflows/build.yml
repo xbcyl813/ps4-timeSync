@@ -1,9 +1,8 @@
-name: Build PS4 PKG
+name: Build ps4-timeSync PKG
 
 on:
   push:
-    branches:
-      - pkg
+    branches: [ pkg ]
   workflow_dispatch:
 
 jobs:
@@ -11,34 +10,43 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: 1. 检出当前仓库代码
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld llvm make wget tar dotnet-runtime-6.0 || sudo apt-get install -y clang lld llvm make wget tar dotnet-runtime-8.0
-
-      - name: Setup OpenOrbis PS4 Toolchain
-        run: |
-          mkdir -p oo_toolchain
-          wget -q https://github.com -O toolchain.tar.gz
-          tar -xzf toolchain.tar.gz -C oo_toolchain
-          chmod +x oo_toolchain/OpenOrbis/PS4Toolchain/bin/linux/*
-
-      - name: Verify custom icon
+      - name: 2. 校验自定义图标文件
         run: |
           if [ ! -f "sce_sys/icon0.png" ]; then
-            echo "::error::Missing sce_sys/icon0.png! Please upload your custom 512x512 PNG icon."
+            echo "::error::缺少 sce_sys/icon0.png 图标文件！"
             exit 1
           fi
 
-      - name: Build PKG
+      - name: 3. 下载官方完整版 OpenOrbis Toolchain Release
         env:
-          OO_PS4_TOOLCHAIN: ${{ github.workspace }}/oo_toolchain/OpenOrbis/PS4Toolchain
-        run: make
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ${{ github.workspace }}/oo_toolchain /tmp/oo_dl
+          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*linux*" -D /tmp/oo_dl || gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*" -D /tmp/oo_dl
+          tar -xzf /tmp/oo_dl/*.tar.gz -C ${{ github.workspace }}/oo_toolchain
 
-      - name: Upload PKG Artifact
+          # 自动查找 create-fself 所在的真实工具链根目录
+          CREATE_FSELF_PATH=$(find ${{ github.workspace }}/oo_toolchain -name "create-fself" -type f | head -n 1)
+          echo "Found create-fself at: $CREATE_FSELF_PATH"
+          REAL_OO_DIR=$(dirname $(dirname $(dirname "$CREATE_FSELF_PATH")))
+          echo "OO_PS4_TOOLCHAIN=$REAL_OO_DIR" >> $GITHUB_ENV
+          chmod +x $(dirname "$CREATE_FSELF_PATH")/*
+
+      - name: 4. 安装编译与打包依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm make
+          # OpenOrbis 的 PkgTool.Core 需要 .NET 运行时（Ubuntu 22.04/24.04 自带或通过 dotnet-runtime 安装）
+          sudo apt-get install -y dotnet-runtime-8.0 || sudo apt-get install -y dotnet-runtime-6.0 || true
+
+      - name: 5. 编译并打包生成 ps4-timeSync.pkg
+        run: |
+          make
+
+      - name: 6. 上传 ps4-timeSync.pkg 产物
         uses: actions/upload-artifact@v4
         with:
           name: ps4-timeSync-pkg
