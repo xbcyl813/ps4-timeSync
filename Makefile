@@ -59,18 +59,19 @@ $(SYSDIR)/param.sfo:
 	$(PKG_TOOL) sfo_setentry $@ TITLE_ID --type Utf8 --maxsize 12 --value "$(TITLE_ID)"
 	$(PKG_TOOL) sfo_setentry $@ VERSION --type Utf8 --maxsize 8 --value "$(VERSION)"
 
-# 打包为最终 PKG（自动包含自定义 icon0.png）
+# 生成 GP4 项目文件并打包为最终 PKG（自动包含自定义 icon0.png）
 $(TARGET_PKG): $(BUILDDIR)/eboot.bin $(SYSDIR)/param.sfo
 	@if [ ! -f "$(SYSDIR)/icon0.png" ]; then \
 		echo "错误: 找不到自定义图标 $(SYSDIR)/icon0.png，请先放入 512x512 的 PNG 图片！"; \
 		exit 1; \
 	fi
-	rm -rf $(PKGDIR)
+	rm -rf $(PKGDIR) $(BUILDDIR)/pkg.gp4
 	mkdir -p $(PKGDIR)/sce_sys
 	cp $(BUILDDIR)/eboot.bin $(PKGDIR)/eboot.bin
 	cp $(SYSDIR)/param.sfo $(PKGDIR)/sce_sys/param.sfo
 	cp $(SYSDIR)/icon0.png $(PKGDIR)/sce_sys/icon0.png
-	$(PKG_TOOL) pkg_build $(PKGDIR) .
+	$(PKG_TOOL) pkg_makegp4 --contentid $(CONTENT_ID) --files "eboot.bin sce_sys/param.sfo sce_sys/icon0.png" --root $(PKGDIR) $(BUILDDIR)/pkg.gp4
+	$(PKG_TOOL) pkg_build $(BUILDDIR)/pkg.gp4 .
 	mv $(CONTENT_ID).pkg $(TARGET_PKG)
 
 clean:
