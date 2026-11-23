@@ -1,113 +1,46 @@
-name: Build ps4-timeSync PKG
+name: Build PS4 PKG
 
 on:
   push:
-    branches: [ pkg ]
+    branches:
+      - pkg
   workflow_dispatch:
 
 jobs:
-  build-pkg:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. 检出当前 pkg 分支代码
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 2. 拉取全固件越狱库 ps4-libjbc
-        uses: actions/checkout@v4
-        with:
-          repository: sleirsgoevy/ps4-libjbc
-          path: libjbc
-
-      - name: 3. 下载官方完整版 OpenOrbis Toolchain Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir -p ${{ github.workspace }}/oo_toolchain /tmp/oo_dl
-          gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*linux*" -D /tmp/oo_dl || gh release download -R OpenOrbis/OpenOrbis-PS4-Toolchain -p "*" -D /tmp/oo_dl
-          tar -xzf /tmp/oo_dl/*.tar.gz -C ${{ github.workspace }}/oo_toolchain
-
-          CREATE_FSELF_PATH=$(find ${{ github.workspace }}/oo_toolchain -name "create-fself" -type f | head -n 1)
-          REAL_OO_DIR=$(dirname $(dirname $(dirname "$CREATE_FSELF_PATH")))
-          echo "OO_PS4_TOOLCHAIN=$REAL_OO_DIR" >> $GITHUB_ENV
-          chmod +x $(dirname "$CREATE_FSELF_PATH")/*
-
-      - name: 4. 安装编译与打包依赖（安装真实 libssl1.1 库）
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang lld llvm-21 make imagemagick wget
-          sudo ln -sf /usr/bin/llvm-ar-21 /usr/local/bin/llvm-ar
+          sudo apt-get install -y clang lld llvm make wget tar dotnet-runtime-6.0 || sudo apt-get install -y clang lld llvm make wget tar dotnet-runtime-8.0
 
-          # 通过变量拼接地址，避免网页复制截断，自动匹配 Ubuntu 官方源中的 libssl1.1
-          BASE_URL="http""://archive.ubuntu.com/ubuntu/pool/main/o/openssl"
-          DEB_FILE=$(wget -qO- "$BASE_URL/" | grep -oE 'libssl1\.1_1\.1\.1[^"]*_amd64\.deb' | head -n 1)
-          echo "Downloading $DEB_FILE ..."
-          wget -q "$BASE_URL/$DEB_FILE" -O /tmp/libssl1.1.deb
-          sudo dpkg -i /tmp/libssl1.1.deb
-
-      - name: 5. 编译 eboot.bin 并打包为 ps4-timeSync.pkg
-        env:
-          LIBJBC_DIR: ${{ github.workspace }}/libjbc
-          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: 1
+      - name: Setup OpenOrbis PS4 Toolchain
         run: |
-          make
+          mkdir -p oo_toolchain
+          wget -q https://github.com -O toolchain.tar.gz
+          tar -xzf toolchain.tar.gz -C oo_toolchain
+          chmod +x oo_toolchain/OpenOrbis/PS4Toolchain/bin/linux/*
 
-          mkdir -p pkg_out/sce_sys
-          cp eboot.bin pkg_out/eboot.bin
+      - name: Verify custom icon
+        run: |
+          if [ ! -f "sce_sys/icon0.png" ]; then
+            echo "::error::Missing sce_sys/icon0.png! Please upload your custom 512x512 PNG icon."
+            exit 1
+          fi
 
-          # 生成标准 512x512 24位色应用图标 (icon0.png)
-          convert -size 512x512 radial-gradient:#0072ce-#002b6b PNG24:pkg_out/sce_sys/icon0.png
+      - name: Build PKG
+        env:
+          OO_PS4_TOOLCHAIN: ${{ github.workspace }}/oo_toolchain/OpenOrbis/PS4Toolchain
+        run: make
 
-          # 生成标准 param.sfo
-          PKGTOOL="$OO_PS4_TOOLCHAIN/bin/linux/PkgTool.Core"
-          chmod +x "$PKGTOOL"
-          "$PKGTOOL" sfo_new pkg_out/sce_sys/param.sfo
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo APP_TYPE --type Integer --maxsize 4 --value 1
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo APP_VER --type Utf8 --maxsize 8 --value "01.00"
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo ATTRIBUTE --type Integer --maxsize 4 --value 0
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo CATEGORY --type Utf8 --maxsize 4 --value "gd"
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo CONTENT_ID --type Utf8 --maxsize 48 --value "IV0000-SYNC00001_00-PS4TIMESYNC00001"
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo DOWNLOAD_DATA_SIZE --type Integer --maxsize 4 --value 0
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo SYSTEM_VER --type Integer --maxsize 4 --value 0
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo TITLE --type Utf8 --maxsize 128 --value "ps4-timeSync"
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo TITLE_ID --type Utf8 --maxsize 12 --value "SYNC00001"
-          "$PKGTOOL" sfo_setentry pkg_out/sce_sys/param.sfo VERSION --type Utf8 --maxsize 8 --value "01.00"
-
-          # 直接生成标准 GP4 项目清单 XML
-          cat << 'EOF' > pkg_out/ps4-timeSync.gp4
-          <?xml version="1.0" encoding="utf-8" standalone="yes"?>
-          <psproject fmt="gp4" version="1000">
-            <volume>
-              <volume_type>pkg_ps4_app</volume_type>
-              <volume_id>PS4VOLUME</volume_id>
-              <volume_ts>2026-01-01 00:00:00</volume_ts>
-              <package content_id="IV0000-SYNC00001_00-PS4TIMESYNC00001" passcode="00000000000000000000000000000000" storage_type="digital50" app_type="full"/>
-              <chunk_info chunk_count="1" scenario_count="1">
-                <chunks>
-                  <chunk id="0" layer_no="0" label="Chunk #0"/>
-                </chunks>
-                <scenarios default_id="0">
-                  <scenario id="0" type="sp" initial_chunk_count="1" label="Scenario #0">0</scenario>
-                </scenarios>
-              </chunk_info>
-            </volume>
-            <files img_no="0">
-              <file targ_path="sce_sys/param.sfo" orig_path="sce_sys/param.sfo"/>
-              <file targ_path="sce_sys/icon0.png" orig_path="sce_sys/icon0.png"/>
-              <file targ_path="eboot.bin" orig_path="eboot.bin"/>
-            </files>
-            <rootdir>
-              <dir targ_name="sce_sys"/>
-            </rootdir>
-          </psproject>
-          EOF
-
-          # 打包出最终的 .pkg 文件
-          "$PKGTOOL" pkg_build pkg_out/ps4-timeSync.gp4 .
-          ls -lh *.pkg
-
-      - name: 6. 上传 ps4-timeSync.pkg 安装包
+      - name: Upload PKG Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ps4-timeSync-pkg
-          path: "*.pkg"
+          path: ps4-timeSync.pkg
+          if-no-files-found: error
