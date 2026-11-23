@@ -35,17 +35,24 @@ jobs:
           echo "OO_PS4_TOOLCHAIN=$REAL_OO_DIR" >> $GITHUB_ENV
           chmod +x $(dirname "$CREATE_FSELF_PATH")/*
 
-      - name: 4. 安装编译与打包依赖
+      - name: 4a. 拉取 OpenSSL 1.1.1w 源码
+        uses: actions/checkout@v4
+        with:
+          repository: openssl/openssl
+          ref: OpenSSL_1_1_1w
+          path: openssl_src
+
+      - name: 4b. 安装编译依赖并生成 libssl1.1
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm make perl git
-          # 直接浅克隆 OpenSSL 1.1.1w 官方 Git 标签并编译 libssl.so.1.1
-          git clone --depth 1 --branch OpenSSL_1_1_1w https://github.com /tmp/openssl
-          cd /tmp/openssl
+          sudo apt-get install -y clang lld llvm make perl
+          cd openssl_src
           ./config --prefix=/usr/local/ssl shared
           make -j$(nproc) build_libs
           sudo cp libssl.so.1.1 libcrypto.so.1.1 /usr/lib/x86_64-linux-gnu/
           sudo ldconfig
+          cd ..
+          rm -rf openssl_src
           
       - name: 5. 编译并打包生成 ps4-timeSync.pkg
         env:
