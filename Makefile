@@ -15,7 +15,7 @@ OBJS   := $(patsubst %.c, $(BUILDDIR)/%.o, $(notdir $(CFILES)))
 VPATH  := $(SOURCEDIR):$(PROJDIR)
 
 CFLAGS  := --target=x86_64-pc-freebsd12-elf -fPIC -funwind-tables -I$(TOOLCHAIN)/include -I$(TOOLCHAIN)/include/c++/v1 -I$(GOLDHEN_SDK)/include -O2 -Wall
-LDFLAGS := -m elf_x86_64 -shared --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -L$(GOLDHEN_SDK) -lGoldHEN_Hook -lc -lkernel -lSceNet -lSceSysmodule
+LDFLAGS := -m elf_x86_64 -shared --script $(TOOLCHAIN)/link.x --eh-frame-hdr -L$(TOOLCHAIN)/lib -L$(GOLDHEN_SDK) -lGoldHEN_Hook -lc -lkernel -lSceNet -lSceSysmodule -lSceRtc
 
 all: $(TARGET)
 
