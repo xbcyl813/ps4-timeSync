@@ -43,6 +43,8 @@ jobs:
           sudo apt-get install -y dotnet-runtime-8.0 || sudo apt-get install -y dotnet-runtime-6.0 || true
 
       - name: 5. 编译并打包生成 ps4-timeSync.pkg
+        env:
+          DOTNET_SYSTEM_GLOBALIZATION_INVARIANT: 1
         run: |
           make
 
