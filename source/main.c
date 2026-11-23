@@ -4,9 +4,6 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <unistd.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <netinet/in.h>
 #include <orbis/libkernel.h>
 #include <orbis/Net.h>
 #include <orbis/Rtc.h>
@@ -36,7 +33,6 @@ struct ps4_timezone {
     int tz_dsttime;
 };
 
-// 插件配置结构体（使用独立字符缓冲区避免二维数组下标）
 typedef struct {
     int delay_seconds;
     int max_retries;
@@ -125,10 +121,8 @@ static void load_config(PluginConfig *cfg) {
         if (first == '\0' || first == ';' || first == '#' || first == '[') {
             continue;
         }
-
         char *eq = strchr(trimmed, '=');
         if (!eq) continue;
-
         *eq = '\0';
         char *key = trim_whitespace(trimmed);
         char *val = trim_whitespace(eq + 1);
@@ -152,33 +146,31 @@ static void load_config(PluginConfig *cfg) {
             set_server_ip(cfg->server4, val);
         }
     }
-
     fclose(fp);
 }
 
-// 查询单个 NTP 服务器
+// 查询单个 NTP 服务器（已修复 OpenOrbis 宏与超时类型）
 static uint64_t query_ntp_server(const char *server_ip) {
     if (!server_ip || *server_ip == '\0') {
         return 0;
     }
 
-    OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_DGRAM, ORBIS_NET_IPPROTO_UDP);
     if (sockfd < 0) {
         return 0;
     }
 
-    struct timeval timeout;
-    timeout.tv_sec = 3;
-    timeout.tv_usec = 0;
-    sceNetSetsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    // OpenOrbis 中 SO_RCVTIMEO 使用 int 类型的微秒数
+    int timeout_usec = 3000000; // 3 秒
+    sceNetSetsockopt(sockfd, ORBIS_NET_SOL_SOCKET, ORBIS_NET_SO_RCVTIMEO, &timeout_usec, sizeof(timeout_usec));
 
-    struct sockaddr_in server_addr;
+    OrbisNetSockaddrIn server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_len = sizeof(server_addr);
-    server_addr.sin_family = AF_INET;
+    server_addr.sin_family = ORBIS_NET_AF_INET;
     server_addr.sin_port = sceNetHtons(NTP_PORT);
 
-    if (sceNetInetPton(AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
+    if (sceNetInetPton(ORBIS_NET_AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
         sceNetSocketClose(sockfd);
         return 0;
     }
@@ -192,7 +184,7 @@ static uint64_t query_ntp_server(const char *server_ip) {
         return 0;
     }
 
-    struct sockaddr_in from_addr;
+    OrbisNetSockaddrIn from_addr;
     OrbisNetSocklen_t from_len = sizeof(from_addr);
     int recv_len = sceNetRecvfrom(sockfd, packet, sizeof(packet), 0, (OrbisNetSockaddr *)&from_addr, &from_len);
     sceNetSocketClose(sockfd);
@@ -232,7 +224,6 @@ static void *ntp_sync_thread(void *arg) {
     server_list[3] = cfg.server4;
 
     uint64_t unix_time = 0;
-
     for (int retry = 0; retry < cfg.max_retries; retry++) {
         for (int i = 0; i < MAX_NTP_SERVERS; i++) {
             const char *ip = *(server_list + i);
@@ -253,7 +244,6 @@ static void *ntp_sync_thread(void *arg) {
         struct ps4_timeval tv;
         tv.tv_sec = (int64_t)unix_time;
         tv.tv_usec = 0;
-
         typedef int (*settimeofday_fn)(const struct ps4_timeval *, const struct ps4_timezone *);
         int ret_sys = ((settimeofday_fn)sceKernelSettimeofday)(&tv, NULL);
 
