@@ -70,7 +70,31 @@ $(TARGET_PKG): $(BUILDDIR)/eboot.bin $(SYSDIR)/param.sfo
 	cp $(BUILDDIR)/eboot.bin $(PKGDIR)/eboot.bin
 	cp $(SYSDIR)/param.sfo $(PKGDIR)/sce_sys/param.sfo
 	cp $(SYSDIR)/icon0.png $(PKGDIR)/sce_sys/icon0.png
-	$(PKG_TOOL) pkg_makegp4 --contentid $(CONTENT_ID) --files "eboot.bin sce_sys/param.sfo sce_sys/icon0.png" --root $(PKGDIR) $(BUILDDIR)/pkg.gp4
+	@printf '<?xml version="1.0" encoding="utf-8" standalone="yes"?>\n\
+<psproject fmt="gp4" version="1000">\n\
+  <volume>\n\
+    <volume_type>pkg_ps4_app</volume_type>\n\
+    <volume_id>PS4VOLUME</volume_id>\n\
+    <volume_ts>2026-01-01 00:00:00</volume_ts>\n\
+    <package content_id="$(CONTENT_ID)" passcode="00000000000000000000000000000000" storage_type="digital50" app_type="full"/>\n\
+    <chunk_info chunk_count="1" scenario_count="1">\n\
+      <chunks>\n\
+        <chunk id="0" layer_no="0" label="Chunk #0"/>\n\
+      </chunks>\n\
+      <scenarios default_id="0">\n\
+        <scenario id="0" type="sp" initial_chunk_count="1" label="Scenario #0">0</scenario>\n\
+      </scenarios>\n\
+    </chunk_info>\n\
+  </volume>\n\
+  <files img_no="0">\n\
+    <file targ_path="eboot.bin" orig_path="$(PKGDIR)/eboot.bin"/>\n\
+    <file targ_path="sce_sys/param.sfo" orig_path="$(PKGDIR)/sce_sys/param.sfo"/>\n\
+    <file targ_path="sce_sys/icon0.png" orig_path="$(PKGDIR)/sce_sys/icon0.png"/>\n\
+  </files>\n\
+  <rootdir>\n\
+    <dir targ_name="sce_sys"/>\n\
+  </rootdir>\n\
+</psproject>\n' > $(BUILDDIR)/pkg.gp4
 	$(PKG_TOOL) pkg_build $(BUILDDIR)/pkg.gp4 .
 	mv $(CONTENT_ID).pkg $(TARGET_PKG)
 
