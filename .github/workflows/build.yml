@@ -38,9 +38,10 @@ jobs:
       - name: 4. 安装编译与打包依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm make
-          # OpenOrbis 的 PkgTool.Core 需要 .NET 运行时（Ubuntu 22.04/24.04 自带或通过 dotnet-runtime 安装）
-          sudo apt-get install -y dotnet-runtime-8.0 || sudo apt-get install -y dotnet-runtime-6.0 || true
+          sudo apt-get install -y clang lld llvm make wget
+          # 补装 OpenOrbis PkgTool.Core 所需的 libssl1.1
+          wget -q http://ubuntu.com -O /tmp/libssl1.1.deb
+          sudo dpkg -i /tmp/libssl1.1.deb
 
       - name: 5. 编译并打包生成 ps4-timeSync.pkg
         env:
