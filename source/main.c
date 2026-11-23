@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <orbis/libkernel.h>
 #include <orbis/Net.h>
@@ -13,20 +14,12 @@
 __attribute__((visibility("default"))) const char *g_pluginName = "ps4-timeSync";
 __attribute__((visibility("default"))) const char *g_pluginDesc = "Auto sync PS4 system clock via NTP";
 __attribute__((visibility("default"))) const char *g_pluginAuth = "Homebrew";
-__attribute__((visibility("default"))) uint32_t g_pluginVersion = 0x00000101; // v1.01
+__attribute__((visibility("default"))) uint32_t g_pluginVersion = 0x00000102; // v1.02
 
-// 公共 NTP 服务器 IP 列表（多节点兜底）
-static const char *NTP_SERVERS[] = {
-    "203.107.6.88",   // 阿里云 NTP
-    "119.29.26.206",  // 腾讯云 NTP
-    "120.25.115.20",  // 阿里云备用 NTP
-    "182.92.12.11"    // 阿里云华北 NTP
-};
-#define NTP_SERVER_COUNT (sizeof(NTP_SERVERS) / sizeof(NTP_SERVERS[0]))
-
+#define CONFIG_PATH "/data/GoldHEN/ps4-timeSync.ini"
+#define MAX_NTP_SERVERS 4
 #define NTP_PORT 123
 #define NTP_TIMESTAMP_DELTA 2208988800ULL
-// PS4 RTC 纪元起点为 0001-01-01，与 1970-01-01 相差 62135596800 秒
 #define UNIX_TO_PS4_EPOCH_SEC 62135596800ULL
 
 struct ps4_timeval {
@@ -39,7 +32,15 @@ struct ps4_timezone {
     int tz_dsttime;
 };
 
-// PS4 系统原生左上角弹窗通知
+// 插件配置结构体
+typedef struct {
+    int delay_seconds;
+    int max_retries;
+    int notify_mode; // 0: 静默, 1: 仅失败提示, 2: 全部提示
+    char servers[MAX_NTP_SERVERS];
+} PluginConfig;
+
+// PS4 系统原生通知弹窗
 static void show_notification(const char *msg) {
     OrbisNotificationRequest req;
     memset(&req, 0, sizeof(req));
@@ -51,14 +52,107 @@ static void show_notification(const char *msg) {
     sceKernelSendNotificationRequest(0, &req, sizeof(req), 0);
 }
 
+// 去除字符串首尾空白符
+static char *trim_whitespace(char *str) {
+    while (isspace((unsigned char)*str)) str++;
+    if (*str == 0) return str;
+    char *end = str + strlen(str) - 1;
+    while (end > str && isspace((unsigned char)*end)) end--;
+    end = '\0';
+    return str;
+}
+
+// 生成默认配置文件
+static void write_default_config(void) {
+    FILE *fp = fopen(CONFIG_PATH, "w");
+    if (!fp) return;
+    fprintf(fp, "; ps4-timeSync 配置文件\n\n");
+    fprintf(fp, "[General]\n");
+    fprintf(fp, "; 插件加载后等待联网的秒数（手动注入破解可设为 0~2，自动注入建议 5~8）\n");
+    fprintf(fp, "DelaySeconds=5\n");
+    fprintf(fp, "; 网络未就绪时的最大重试次数（每次间隔 3 秒）\n");
+    fprintf(fp, "MaxRetries=6\n");
+    fprintf(fp, "; 弹窗提示模式: 0 = 完全静默, 1 = 仅失败提示, 2 = 成功和失败均提示\n");
+    fprintf(fp, "NotifyMode=2\n\n");
+    fprintf(fp, "[NTP]\n");
+    fprintf(fp, "; 自定义 NTP 服务器 IP（支持最多 4 个，留空则跳过）\n");
+    fprintf(fp, "Server1=203.107.6.88\n");
+    fprintf(fp, "Server2=119.29.26.206\n");
+    fprintf(fp, "Server3=120.25.115.20\n");
+    fprintf(fp, "Server4=182.92.12.11\n");
+    fclose(fp);
+}
+
+// 加载并解析 INI 配置文件
+static void load_config(PluginConfig *cfg) {
+    // 1. 设置默认值
+    cfg->delay_seconds = 5;
+    cfg->max_retries = 6;
+    cfg->notify_mode = 2;
+    strncpy(cfg->servers, "203.107.6.88", 63);
+    strncpy(cfg->servers, "119.29.26.206", 63);
+    strncpy(cfg->servers, "120.25.115.20", 63);
+    strncpy(cfg->servers, "182.92.12.11", 63);
+
+    FILE *fp = fopen(CONFIG_PATH, "r");
+    if (!fp) {
+        write_default_config();
+        return;
+    }
+
+    char line;
+    while (fgets(line, sizeof(line), fp)) {
+        char *trimmed = trim_whitespace(line);
+        // 跳过空行、注释和节名
+        if (trimmed == '\0' || trimmed == ';' || trimmed == '#' || trimmed == '[') {
+            continue;
+        }
+
+        char *eq = strchr(trimmed, '=');
+        if (!eq) continue;
+
+        *eq = '\0';
+        char *key = trim_whitespace(trimmed);
+        char *val = trim_whitespace(eq + 1);
+
+        if (strcmp(key, "DelaySeconds") == 0) {
+            int v = atoi(val);
+            if (v >= 0 && v <= 60) cfg->delay_seconds = v;
+        } else if (strcmp(key, "MaxRetries") == 0) {
+            int v = atoi(val);
+            if (v >= 1 && v <= 30) cfg->max_retries = v;
+        } else if (strcmp(key, "NotifyMode") == 0) {
+            int v = atoi(val);
+            if (v >= 0 && v <= 2) cfg->notify_mode = v;
+        } else if (strcmp(key, "Server1") == 0) {
+            strncpy(cfg->servers, val, 63);
+            cfg->servers = '\0';
+        } else if (strcmp(key, "Server2") == 0) {
+            strncpy(cfg->servers, val, 63);
+            cfg->servers = '\0';
+        } else if (strcmp(key, "Server3") == 0) {
+            strncpy(cfg->servers, val, 63);
+            cfg->servers = '\0';
+        } else if (strcmp(key, "Server4") == 0) {
+            strncpy(cfg->servers, val, 63);
+            cfg->servers = '\0';
+        }
+    }
+
+    fclose(fp);
+}
+
 // 查询单个 NTP 服务器
 static uint64_t query_ntp_server(const char *server_ip) {
+    if (!server_ip || server_ip == '\0') {
+        return 0;
+    }
+
     OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_DGRAM, ORBIS_NET_IPPROTO_UDP);
     if (sockfd < 0) {
         return 0;
     }
 
-    // 修复：必须使用 OrbisNetTimeval 结构体设置超时
     OrbisNetTimeval timeout;
     timeout.tv_sec = 3;
     timeout.tv_usec = 0;
@@ -69,10 +163,14 @@ static uint64_t query_ntp_server(const char *server_ip) {
     server_addr.sin_len = sizeof(server_addr);
     server_addr.sin_family = ORBIS_NET_AF_INET;
     server_addr.sin_port = sceNetHtons(NTP_PORT);
-    sceNetInetPton(ORBIS_NET_AF_INET, server_ip, &server_addr.sin_addr);
 
-    uint8_t packet[48] = {0};
-    packet[0] = 0x1B; // LI=0, VN=3, Mode=3 (Client)
+    if (sceNetInetPton(ORBIS_NET_AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
+        sceNetSocketClose(sockfd);
+        return 0;
+    }
+
+    uint8_t packet = {0};
+    packet = 0x1B; // LI=0, VN=3, Mode=3 (Client)
 
     if (sceNetSendto(sockfd, packet, sizeof(packet), 0, (OrbisNetSockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         sceNetSocketClose(sockfd);
@@ -88,10 +186,10 @@ static uint64_t query_ntp_server(const char *server_ip) {
         return 0;
     }
 
-    uint32_t ntp_seconds = ((uint32_t)packet[40] << 24) |
-                           ((uint32_t)packet[41] << 16) |
-                           ((uint32_t)packet[42] << 8)  |
-                           ((uint32_t)packet[43]);
+    uint32_t ntp_seconds = ((uint32_t)packet << 24) |
+                           ((uint32_t)packet << 16) |
+                           ((uint32_t)packet << 8)  |
+                           ((uint32_t)packet);
 
     if (ntp_seconds <= NTP_TIMESTAMP_DELTA) {
         return 0;
@@ -100,10 +198,15 @@ static uint64_t query_ntp_server(const char *server_ip) {
     return (uint64_t)(ntp_seconds - NTP_TIMESTAMP_DELTA);
 }
 
-// 后台同步线程（使用 PS4 原生 ScePthread）
+// 后台同步线程
 static void *ntp_sync_thread(void *arg) {
-    // 初始等待 5 秒，留出系统启动和连接 Wi-Fi 的时间
-    sceKernelSleep(5);
+    PluginConfig cfg;
+    load_config(&cfg);
+
+    // 插件加载后按配置等待联网
+    if (cfg.delay_seconds > 0) {
+        sceKernelSleep(cfg.delay_seconds);
+    }
 
     sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET);
     sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_RTC);
@@ -111,12 +214,13 @@ static void *ntp_sync_thread(void *arg) {
 
     uint64_t unix_time = 0;
 
-    // 最多重试 6 轮，防止开机联网慢导致首次失败
-    for (int retry = 0; retry < 6; retry++) {
-        for (size_t i = 0; i < NTP_SERVER_COUNT; i++) {
-            unix_time = query_ntp_server(NTP_SERVERS[i]);
-            if (unix_time > 0) {
-                break;
+    for (int retry = 0; retry < cfg.max_retries; retry++) {
+        for (int i = 0; i < MAX_NTP_SERVERS; i++) {
+            if (cfg.servers[i] != '\0') {
+                unix_time = query_ntp_server(cfg.servers[i]);
+                if (unix_time > 0) {
+                    break;
+                }
             }
         }
         if (unix_time > 0) {
@@ -133,19 +237,20 @@ static void *ntp_sync_thread(void *arg) {
         typedef int (*settimeofday_fn)(const struct ps4_timeval *, const struct ps4_timezone *);
         int ret_sys = ((settimeofday_fn)sceKernelSettimeofday)(&tv, NULL);
 
-        // 尝试同步更新底层 RTC 时钟（单位为微秒）
         OrbisRtcTick rtc_tick;
         rtc_tick.tick = (unix_time + UNIX_TO_PS4_EPOCH_SEC) * 1000000ULL;
         int ret_rtc = sceRtcSetCurrentTick(&rtc_tick);
 
         if (ret_sys == 0 || ret_rtc == 0) {
-            show_notification("ps4-timeSync: NTP 时间同步成功！");
-        } else {
-            char err_msg[128];
-            snprintf(err_msg, sizeof(err_msg), "ps4-timeSync: 写入失败 (sys:%d, rtc:0x%x)", ret_sys, ret_rtc);
+            if (cfg.notify_mode == 2) {
+                show_notification("ps4-timeSync: NTP 时间同步成功！");
+            }
+        } else if (cfg.notify_mode >= 1) {
+            char err_msg;
+            snprintf(err_msg, sizeof(err_msg), "ps4-timeSync: 时间写入失败 (sys:%d, rtc:0x%x)", ret_sys, ret_rtc);
             show_notification(err_msg);
         }
-    } else {
+    } else if (cfg.notify_mode >= 1) {
         show_notification("ps4-timeSync: 网络超时，NTP 同步失败");
     }
 
