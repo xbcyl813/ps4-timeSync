@@ -51,3 +51,4 @@ jobs:
         with:
           name: ps4-timeSync-plugin
           path: ps4-timeSync.prx
+          if-no-files-found: error
