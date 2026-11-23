@@ -2,11 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <pthread.h>
 #include <unistd.h>
-#include <netinet/in.h>
 #include <orbis/libkernel.h>
 #include <orbis/Net.h>
+#include <orbis/Rtc.h>
 #include <orbis/Sysmodule.h>
 #include <GoldHEN.h>
 
@@ -14,13 +13,21 @@
 __attribute__((visibility("default"))) const char *g_pluginName = "ps4-timeSync";
 __attribute__((visibility("default"))) const char *g_pluginDesc = "Auto sync PS4 system clock via NTP";
 __attribute__((visibility("default"))) const char *g_pluginAuth = "Homebrew";
-__attribute__((visibility("default"))) uint32_t g_pluginVersion = 0x00000100; // v1.00
+__attribute__((visibility("default"))) uint32_t g_pluginVersion = 0x00000101; // v1.01
 
-// 公共 NTP 服务器 IP（绕过 DNS 屏蔽）
-#define NTP_SERVER_PRIMARY   "203.107.6.88"    // 阿里云 NTP
-#define NTP_SERVER_SECONDARY "119.29.26.206"   // 腾讯云 NTP
+// 公共 NTP 服务器 IP 列表（多节点兜底）
+static const char *NTP_SERVERS[] = {
+    "203.107.6.88",   // 阿里云 NTP
+    "119.29.26.206",  // 腾讯云 NTP
+    "120.25.115.20",  // 阿里云备用 NTP
+    "182.92.12.11"    // 阿里云华北 NTP
+};
+#define NTP_SERVER_COUNT (sizeof(NTP_SERVERS) / sizeof(NTP_SERVERS[0]))
+
 #define NTP_PORT 123
 #define NTP_TIMESTAMP_DELTA 2208988800ULL
+// PS4 RTC 纪元起点为 0001-01-01，与 1970-01-01 相差 62135596800 秒
+#define UNIX_TO_PS4_EPOCH_SEC 62135596800ULL
 
 struct ps4_timeval {
     int64_t tv_sec;
@@ -46,20 +53,23 @@ static void show_notification(const char *msg) {
 
 // 查询单个 NTP 服务器
 static uint64_t query_ntp_server(const char *server_ip) {
-    OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", 2, 2, 17);
+    OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_DGRAM, ORBIS_NET_IPPROTO_UDP);
     if (sockfd < 0) {
         return 0;
     }
 
-    int timeout = 3000000;
-    sceNetSetsockopt(sockfd, 0xffff, 0x1006, &timeout, sizeof(timeout));
+    // 修复：必须使用 OrbisNetTimeval 结构体设置超时
+    OrbisNetTimeval timeout;
+    timeout.tv_sec = 3;
+    timeout.tv_usec = 0;
+    sceNetSetsockopt(sockfd, ORBIS_NET_SOL_SOCKET, ORBIS_NET_SO_RCVTIMEO, &timeout, sizeof(timeout));
 
-    struct sockaddr_in server_addr;
+    OrbisNetSockaddrIn server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_len = sizeof(server_addr);
-    server_addr.sin_family = 2; // AF_INET
+    server_addr.sin_family = ORBIS_NET_AF_INET;
     server_addr.sin_port = sceNetHtons(NTP_PORT);
-    sceNetInetPton(2, server_ip, &server_addr.sin_addr);
+    sceNetInetPton(ORBIS_NET_AF_INET, server_ip, &server_addr.sin_addr);
 
     uint8_t packet[48] = {0};
     packet[0] = 0x1B; // LI=0, VN=3, Mode=3 (Client)
@@ -69,7 +79,7 @@ static uint64_t query_ntp_server(const char *server_ip) {
         return 0;
     }
 
-    struct sockaddr_in from_addr;
+    OrbisNetSockaddrIn from_addr;
     OrbisNetSocklen_t from_len = sizeof(from_addr);
     int recv_len = sceNetRecvfrom(sockfd, packet, sizeof(packet), 0, (OrbisNetSockaddr *)&from_addr, &from_len);
     sceNetSocketClose(sockfd);
@@ -90,16 +100,29 @@ static uint64_t query_ntp_server(const char *server_ip) {
     return (uint64_t)(ntp_seconds - NTP_TIMESTAMP_DELTA);
 }
 
-// 后台同步线程
+// 后台同步线程（使用 PS4 原生 ScePthread）
 static void *ntp_sync_thread(void *arg) {
-    sceKernelSleep(3);
+    // 初始等待 5 秒，留出系统启动和连接 Wi-Fi 的时间
+    sceKernelSleep(5);
 
     sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_NET);
+    sceSysmoduleLoadModuleInternal(ORBIS_SYSMODULE_INTERNAL_RTC);
     sceNetInit();
 
-    uint64_t unix_time = query_ntp_server(NTP_SERVER_PRIMARY);
-    if (unix_time == 0) {
-        unix_time = query_ntp_server(NTP_SERVER_SECONDARY);
+    uint64_t unix_time = 0;
+
+    // 最多重试 6 轮，防止开机联网慢导致首次失败
+    for (int retry = 0; retry < 6; retry++) {
+        for (size_t i = 0; i < NTP_SERVER_COUNT; i++) {
+            unix_time = query_ntp_server(NTP_SERVERS[i]);
+            if (unix_time > 0) {
+                break;
+            }
+        }
+        if (unix_time > 0) {
+            break;
+        }
+        sceKernelSleep(3);
     }
 
     if (unix_time > 0) {
@@ -108,15 +131,22 @@ static void *ntp_sync_thread(void *arg) {
         tv.tv_usec = 0;
 
         typedef int (*settimeofday_fn)(const struct ps4_timeval *, const struct ps4_timezone *);
-        int ret = ((settimeofday_fn)sceKernelSettimeofday)(&tv, NULL);
+        int ret_sys = ((settimeofday_fn)sceKernelSettimeofday)(&tv, NULL);
 
-        if (ret == 0) {
-            show_notification("ps4-timeSync: NTP 时间自动同步成功！");
+        // 尝试同步更新底层 RTC 时钟（单位为微秒）
+        OrbisRtcTick rtc_tick;
+        rtc_tick.tick = (unix_time + UNIX_TO_PS4_EPOCH_SEC) * 1000000ULL;
+        int ret_rtc = sceRtcSetCurrentTick(&rtc_tick);
+
+        if (ret_sys == 0 || ret_rtc == 0) {
+            show_notification("ps4-timeSync: NTP 时间同步成功！");
         } else {
             char err_msg[128];
-            snprintf(err_msg, sizeof(err_msg), "ps4-timeSync: 时间写入失败 (错误码: %d)", ret);
+            snprintf(err_msg, sizeof(err_msg), "ps4-timeSync: 写入失败 (sys:%d, rtc:0x%x)", ret_sys, ret_rtc);
             show_notification(err_msg);
         }
+    } else {
+        show_notification("ps4-timeSync: 网络超时，NTP 同步失败");
     }
 
     return NULL;
@@ -124,9 +154,9 @@ static void *ntp_sync_thread(void *arg) {
 
 // GoldHEN 插件入口函数
 __attribute__((visibility("hidden"))) int module_start(size_t argc, const void *args) {
-    pthread_t thread;
-    pthread_create(&thread, NULL, ntp_sync_thread, NULL);
-    pthread_detach(thread);
+    ScePthread thread;
+    scePthreadCreate(&thread, NULL, ntp_sync_thread, NULL, "ntp_sync_thread");
+    scePthreadDetach(thread);
     return 0;
 }
 
