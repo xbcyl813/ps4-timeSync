@@ -42,7 +42,7 @@ $(BUILDDIR)/eboot.elf: $(OBJS)
 
 # 生成带高权限 PAID 的 FSELF
 $(BUILDDIR)/eboot.bin: $(BUILDDIR)/eboot.elf
-	$(CREATE_FSELF) -in=$< --out=$@ --paid 0x3800000000000011
+	$(CREATE_FSELF) -in=$< -eboot=$@ --paid 0x3800000000000011
 
 # 生成 param.sfo
 $(SYSDIR)/param.sfo:
