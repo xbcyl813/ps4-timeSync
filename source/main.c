@@ -4,6 +4,9 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <netinet/in.h>
 #include <orbis/libkernel.h>
 #include <orbis/Net.h>
 #include <orbis/Rtc.h>
@@ -18,6 +21,7 @@ __attribute__((visibility("default"))) uint32_t g_pluginVersion = 0x00000102; //
 
 #define CONFIG_PATH "/data/GoldHEN/ps4-timeSync.ini"
 #define MAX_NTP_SERVERS 4
+#define MAX_IP_LEN 64
 #define NTP_PORT 123
 #define NTP_TIMESTAMP_DELTA 2208988800ULL
 #define UNIX_TO_PS4_EPOCH_SEC 62135596800ULL
@@ -37,7 +41,7 @@ typedef struct {
     int delay_seconds;
     int max_retries;
     int notify_mode; // 0: 静默, 1: 仅失败提示, 2: 全部提示
-    char servers[MAX_NTP_SERVERS];
+    char servers[MAX_NTP_SERVERS][MAX_IP_LEN];
 } PluginConfig;
 
 // PS4 系统原生通知弹窗
@@ -54,11 +58,17 @@ static void show_notification(const char *msg) {
 
 // 去除字符串首尾空白符
 static char *trim_whitespace(char *str) {
-    while (isspace((unsigned char)*str)) str++;
-    if (*str == 0) return str;
+    while (isspace((unsigned char)*str)) {
+        str++;
+    }
+    if (*str == '\0') {
+        return str;
+    }
     char *end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
-    end = '\0';
+    while (end > str && isspace((unsigned char)*end)) {
+        end--;
+    }
+    end[1] = '\0';
     return str;
 }
 
@@ -83,16 +93,21 @@ static void write_default_config(void) {
     fclose(fp);
 }
 
+// 安全复制服务器 IP
+static void set_server_ip(char dest[MAX_IP_LEN], const char *src) {
+    strncpy(dest, src, MAX_IP_LEN - 1);
+    dest[MAX_IP_LEN - 1] = '\0';
+}
+
 // 加载并解析 INI 配置文件
 static void load_config(PluginConfig *cfg) {
-    // 1. 设置默认值
     cfg->delay_seconds = 5;
     cfg->max_retries = 6;
     cfg->notify_mode = 2;
-    strncpy(cfg->servers, "203.107.6.88", 63);
-    strncpy(cfg->servers, "119.29.26.206", 63);
-    strncpy(cfg->servers, "120.25.115.20", 63);
-    strncpy(cfg->servers, "182.92.12.11", 63);
+    set_server_ip(cfg->servers[0], "203.107.6.88");
+    set_server_ip(cfg->servers[1], "119.29.26.206");
+    set_server_ip(cfg->servers[2], "120.25.115.20");
+    set_server_ip(cfg->servers[3], "182.92.12.11");
 
     FILE *fp = fopen(CONFIG_PATH, "r");
     if (!fp) {
@@ -100,11 +115,11 @@ static void load_config(PluginConfig *cfg) {
         return;
     }
 
-    char line;
+    char line[256];
     while (fgets(line, sizeof(line), fp)) {
         char *trimmed = trim_whitespace(line);
         // 跳过空行、注释和节名
-        if (trimmed == '\0' || trimmed == ';' || trimmed == '#' || trimmed == '[') {
+        if (trimmed[0] == '\0' || trimmed[0] == ';' || trimmed[0] == '#' || trimmed[0] == '[') {
             continue;
         }
 
@@ -125,17 +140,13 @@ static void load_config(PluginConfig *cfg) {
             int v = atoi(val);
             if (v >= 0 && v <= 2) cfg->notify_mode = v;
         } else if (strcmp(key, "Server1") == 0) {
-            strncpy(cfg->servers, val, 63);
-            cfg->servers = '\0';
+            set_server_ip(cfg->servers[0], val);
         } else if (strcmp(key, "Server2") == 0) {
-            strncpy(cfg->servers, val, 63);
-            cfg->servers = '\0';
+            set_server_ip(cfg->servers[1], val);
         } else if (strcmp(key, "Server3") == 0) {
-            strncpy(cfg->servers, val, 63);
-            cfg->servers = '\0';
+            set_server_ip(cfg->servers[2], val);
         } else if (strcmp(key, "Server4") == 0) {
-            strncpy(cfg->servers, val, 63);
-            cfg->servers = '\0';
+            set_server_ip(cfg->servers[3], val);
         }
     }
 
@@ -144,40 +155,40 @@ static void load_config(PluginConfig *cfg) {
 
 // 查询单个 NTP 服务器
 static uint64_t query_ntp_server(const char *server_ip) {
-    if (!server_ip || server_ip == '\0') {
+    if (!server_ip || server_ip[0] == '\0') {
         return 0;
     }
 
-    OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", ORBIS_NET_AF_INET, ORBIS_NET_SOCK_DGRAM, ORBIS_NET_IPPROTO_UDP);
+    OrbisNetId sockfd = sceNetSocket("gh_ntp_sock", AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sockfd < 0) {
         return 0;
     }
 
-    OrbisNetTimeval timeout;
+    struct timeval timeout;
     timeout.tv_sec = 3;
     timeout.tv_usec = 0;
-    sceNetSetsockopt(sockfd, ORBIS_NET_SOL_SOCKET, ORBIS_NET_SO_RCVTIMEO, &timeout, sizeof(timeout));
+    sceNetSetsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
-    OrbisNetSockaddrIn server_addr;
+    struct sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_len = sizeof(server_addr);
-    server_addr.sin_family = ORBIS_NET_AF_INET;
+    server_addr.sin_family = AF_INET;
     server_addr.sin_port = sceNetHtons(NTP_PORT);
 
-    if (sceNetInetPton(ORBIS_NET_AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
+    if (sceNetInetPton(AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
         sceNetSocketClose(sockfd);
         return 0;
     }
 
-    uint8_t packet = {0};
-    packet = 0x1B; // LI=0, VN=3, Mode=3 (Client)
+    uint8_t packet[48] = {0};
+    packet[0] = 0x1B; // LI=0, VN=3, Mode=3 (Client)
 
     if (sceNetSendto(sockfd, packet, sizeof(packet), 0, (OrbisNetSockaddr *)&server_addr, sizeof(server_addr)) < 0) {
         sceNetSocketClose(sockfd);
         return 0;
     }
 
-    OrbisNetSockaddrIn from_addr;
+    struct sockaddr_in from_addr;
     OrbisNetSocklen_t from_len = sizeof(from_addr);
     int recv_len = sceNetRecvfrom(sockfd, packet, sizeof(packet), 0, (OrbisNetSockaddr *)&from_addr, &from_len);
     sceNetSocketClose(sockfd);
@@ -186,10 +197,10 @@ static uint64_t query_ntp_server(const char *server_ip) {
         return 0;
     }
 
-    uint32_t ntp_seconds = ((uint32_t)packet << 24) |
-                           ((uint32_t)packet << 16) |
-                           ((uint32_t)packet << 8)  |
-                           ((uint32_t)packet);
+    uint32_t ntp_seconds = ((uint32_t)packet[40] << 24) |
+                           ((uint32_t)packet[41] << 16) |
+                           ((uint32_t)packet[42] << 8)  |
+                           ((uint32_t)packet[43]);
 
     if (ntp_seconds <= NTP_TIMESTAMP_DELTA) {
         return 0;
@@ -216,7 +227,7 @@ static void *ntp_sync_thread(void *arg) {
 
     for (int retry = 0; retry < cfg.max_retries; retry++) {
         for (int i = 0; i < MAX_NTP_SERVERS; i++) {
-            if (cfg.servers[i] != '\0') {
+            if (cfg.servers[i][0] != '\0') {
                 unix_time = query_ntp_server(cfg.servers[i]);
                 if (unix_time > 0) {
                     break;
@@ -246,7 +257,7 @@ static void *ntp_sync_thread(void *arg) {
                 show_notification("ps4-timeSync: NTP 时间同步成功！");
             }
         } else if (cfg.notify_mode >= 1) {
-            char err_msg;
+            char err_msg[128];
             snprintf(err_msg, sizeof(err_msg), "ps4-timeSync: 时间写入失败 (sys:%d, rtc:0x%x)", ret_sys, ret_rtc);
             show_notification(err_msg);
         }
