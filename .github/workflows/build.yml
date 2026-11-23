@@ -36,14 +36,16 @@ jobs:
           chmod +x $(dirname "$CREATE_FSELF_PATH")/*
 
       - name: 4. 安装编译与打包依赖
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm make curl perl
-          # 从 OpenSSL 官方 GitHub Release 编译安装 libssl1.1（永久有效，不依赖 Ubuntu 旧源）
-          curl -fSL https://github.com -o /tmp/openssl.tar.gz
-          tar -xzf /tmp/openssl.tar.gz -C /tmp
+          sudo apt-get install -y clang lld llvm make perl
+          # 使用 gh cli 直接下载 OpenSSL 1.1.1 源码包并编译动态库
+          gh release download openssl-1.1.1w -R openssl/openssl -p "openssl-1.1.1w.tar.gz" -D /tmp
+          tar -xzf /tmp/openssl-1.1.1w.tar.gz -C /tmp
           cd /tmp/openssl-1.1.1w
-          ./config --prefix=/usr/local/ssl --openssldir=/usr/local/ssl shared zlib-dynamic || ./config --prefix=/usr/local/ssl shared
+          ./config --prefix=/usr/local/ssl shared
           make -j$(nproc) build_libs
           sudo cp libssl.so.1.1 libcrypto.so.1.1 /usr/lib/x86_64-linux-gnu/
           sudo ldconfig
