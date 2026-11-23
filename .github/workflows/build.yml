@@ -36,15 +36,12 @@ jobs:
           chmod +x $(dirname "$CREATE_FSELF_PATH")/*
 
       - name: 4. 安装编译与打包依赖
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld llvm make perl
-          # 使用 gh cli 直接下载 OpenSSL 1.1.1 源码包并编译动态库
-          gh release download openssl-1.1.1w -R openssl/openssl -p "openssl-1.1.1w.tar.gz" -D /tmp
-          tar -xzf /tmp/openssl-1.1.1w.tar.gz -C /tmp
-          cd /tmp/openssl-1.1.1w
+          sudo apt-get install -y clang lld llvm make perl git
+          # 直接浅克隆 OpenSSL 1.1.1w 官方 Git 标签并编译 libssl.so.1.1
+          git clone --depth 1 --branch OpenSSL_1_1_1w https://github.com /tmp/openssl
+          cd /tmp/openssl
           ./config --prefix=/usr/local/ssl shared
           make -j$(nproc) build_libs
           sudo cp libssl.so.1.1 libcrypto.so.1.1 /usr/lib/x86_64-linux-gnu/
